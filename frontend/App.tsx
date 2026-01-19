@@ -6,22 +6,9 @@ import { Layout } from './components/Layout';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { AddIngredient } from './pages/AddIngredient';
+import { IngredientDetails } from './pages/IngredientDetails';
+import { EditIngredient } from './pages/EditIngredient';
 import { Settings } from './pages/Settings';
-
-// Placeholder pages - will be implemented later
-const IngredientDetails: React.FC = () => (
-  <div className="text-center py-12">
-    <h1 className="text-2xl font-bold">Détails Ingrédient</h1>
-    <p className="text-stone-500 mt-2">Page en construction</p>
-  </div>
-);
-
-const EditIngredient: React.FC = () => (
-  <div className="text-center py-12">
-    <h1 className="text-2xl font-bold">Modifier Ingrédient</h1>
-    <p className="text-stone-500 mt-2">Page en construction</p>
-  </div>
-);
 
 const StorageMap: React.FC = () => (
   <div className="text-center py-12">
