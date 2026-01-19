@@ -8,10 +8,12 @@ import {
   Camera,
   X,
   Plus,
-  Trash2
+  Trash2,
+  Wand2,
+  Search
 } from 'lucide-react';
 import { getIngredientById, updateIngredient } from '../services/ingredientService';
-import { enrichIngredientData } from '../services/aiService';
+import { enrichIngredientData, generateCompleteProductSheet } from '../services/aiService';
 import type { Ingredient, IngredientCategory } from '../types';
 
 const CATEGORIES: { value: IngredientCategory; label: string }[] = [
@@ -40,6 +42,7 @@ export const EditIngredient: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [enriching, setEnriching] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
   const [error, setError] = useState('');
 
   const [formData, setFormData] = useState({
@@ -105,7 +108,53 @@ export const EditIngredient: React.FC = () => {
     loadIngredient();
   }, [id]);
 
-  // AI Enrichment
+  // Régénération complète de la fiche avec Google Search
+  const handleRegenerateSheet = async () => {
+    if (!formData.name) {
+      setError("Le nom du produit est requis pour la régénération");
+      return;
+    }
+
+    setRegenerating(true);
+    setError('');
+
+    try {
+      const result = await generateCompleteProductSheet(
+        formData.name,
+        formData.brand || undefined
+      );
+
+      if (result) {
+        setFormData(prev => ({
+          ...prev,
+          name: result.name || prev.name,
+          brand: result.brand || prev.brand,
+          origin: result.origin || prev.origin,
+          producer: (result as any).producer || prev.producer,
+          category: (result.category as IngredientCategory) || prev.category,
+          format: result.format || prev.format,
+          description: result.description || prev.description,
+          flavorProfile: result.flavorProfile || prev.flavorProfile,
+          aromaProfile: result.aromaProfile?.length ? result.aromaProfile : prev.aromaProfile,
+          heatLevel: result.heatLevel ?? prev.heatLevel,
+          suggestedUses: result.suggestedUses?.length ? result.suggestedUses : prev.suggestedUses,
+          pairings: result.pairings?.length ? result.pairings : prev.pairings,
+          substitutes: result.substitutes?.length ? result.substitutes : prev.substitutes,
+          shelfLife: result.shelfLife || prev.shelfLife,
+          storageInstructions: result.storageInstructions || prev.storageInstructions,
+          producerHistory: (result as any).producerHistory || prev.producerHistory,
+        }));
+      } else {
+        setError("Impossible de régénérer la fiche. Vérifiez votre clé API Gemini.");
+      }
+    } catch (err: any) {
+      setError(err.message || "Erreur lors de la régénération IA");
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
+  // AI Enrichment (complémentaire)
   const handleEnrichWithAI = async (imageBase64?: string) => {
     setEnriching(true);
     setError('');
@@ -221,37 +270,70 @@ export const EditIngredient: React.FC = () => {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* AI Enrichment */}
-        <div className="bg-gradient-to-br from-purple-50 to-kitchen-50 dark:from-purple-900/20 dark:to-kitchen-900/20 rounded-xl border border-purple-200 dark:border-purple-800 p-5">
-          <h2 className="font-semibold text-stone-900 dark:text-white mb-3 flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-purple-500" />
-            Enrichissement IA
-          </h2>
-          <div className="flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={() => handleEnrichWithAI()}
-              disabled={enriching || !formData.name}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-medium disabled:opacity-50"
-            >
-              {enriching ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-              {enriching ? 'Analyse...' : 'Compléter avec l\'IA'}
-            </button>
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={enriching}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 font-medium hover:bg-purple-50 dark:hover:bg-purple-900/30 disabled:opacity-50"
-            >
-              <Camera className="w-5 h-5" />
-              Scanner étiquette
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleImageSelect}
-              className="hidden"
-            />
+        <div className="bg-gradient-to-br from-purple-500/10 to-kitchen-500/10 dark:from-purple-900/30 dark:to-kitchen-900/30 rounded-xl border border-purple-200 dark:border-purple-800 p-6">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-kitchen-500 flex items-center justify-center flex-shrink-0">
+              <Wand2 className="w-6 h-6 text-white" />
+            </div>
+            <div className="flex-1">
+              <h2 className="font-semibold text-stone-900 dark:text-white mb-1">
+                IA & Enrichissement
+              </h2>
+              <p className="text-sm text-stone-600 dark:text-stone-400 mb-4">
+                Régénérez la fiche complète avec recherche Google, ou enrichissez les informations existantes.
+              </p>
+
+              <div className="flex flex-wrap gap-3">
+                {/* Bouton principal : Régénérer la fiche */}
+                <button
+                  type="button"
+                  onClick={handleRegenerateSheet}
+                  disabled={regenerating || enriching || !formData.name}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-kitchen-500 hover:from-purple-600 hover:to-kitchen-600 text-white font-semibold shadow-lg disabled:opacity-50 transition-all"
+                >
+                  {regenerating ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Recherche...
+                    </>
+                  ) : (
+                    <>
+                      <Search className="w-5 h-5" />
+                      Régénérer la fiche
+                    </>
+                  )}
+                </button>
+
+                {/* Enrichir (sans écraser) */}
+                <button
+                  type="button"
+                  onClick={() => handleEnrichWithAI()}
+                  disabled={enriching || regenerating || !formData.name}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 font-medium hover:bg-purple-50 dark:hover:bg-purple-900/30 disabled:opacity-50 transition-all"
+                >
+                  {enriching ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+                  Compléter
+                </button>
+
+                {/* Scanner étiquette */}
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={enriching || regenerating}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-stone-300 dark:border-stone-700 text-stone-700 dark:text-stone-300 font-medium hover:bg-stone-50 dark:hover:bg-stone-800 disabled:opacity-50 transition-all"
+                >
+                  <Camera className="w-5 h-5" />
+                  Scanner
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageSelect}
+                  className="hidden"
+                />
+              </div>
+            </div>
           </div>
         </div>
 

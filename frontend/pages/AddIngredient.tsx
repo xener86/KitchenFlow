@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -7,10 +7,12 @@ import {
   Loader2,
   Plus,
   X,
-  Package
+  Package,
+  Wand2,
+  Search
 } from 'lucide-react';
 import { saveIngredient } from '../services/ingredientService';
-import { enrichIngredientData } from '../services/aiService';
+import { enrichIngredientData, generateCompleteProductSheet } from '../services/aiService';
 import type { IngredientCategory, Ingredient } from '../types';
 
 const CATEGORIES: { value: IngredientCategory; label: string }[] = [
@@ -59,8 +61,10 @@ export const AddIngredient: React.FC = () => {
 
   const [loading, setLoading] = useState(false);
   const [enriching, setEnriching] = useState(false);
+  const [autoGenerating, setAutoGenerating] = useState(false);
   const [error, setError] = useState('');
   const [newTag, setNewTag] = useState('');
+  const [showAutoGenerate, setShowAutoGenerate] = useState(false);
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -74,6 +78,50 @@ export const AddIngredient: React.FC = () => {
       setImageBase64(result.split(',')[1]);
     };
     reader.readAsDataURL(file);
+  };
+
+  // Génération automatique de fiche complète avec recherche Google
+  const handleAutoGenerate = async () => {
+    if (!formData.name) {
+      setError("Entrez le nom du produit pour générer la fiche");
+      return;
+    }
+
+    setAutoGenerating(true);
+    setError('');
+
+    try {
+      const result = await generateCompleteProductSheet(
+        formData.name,
+        formData.brand || undefined
+      );
+
+      if (result) {
+        setFormData(prev => ({
+          ...prev,
+          name: result.name || prev.name,
+          brand: result.brand || prev.brand,
+          origin: result.origin || prev.origin,
+          category: (result.category as IngredientCategory) || prev.category,
+          format: result.format || prev.format,
+          description: result.description || prev.description,
+          flavorProfile: result.flavorProfile || prev.flavorProfile,
+          aromaProfile: result.aromaProfile || prev.aromaProfile,
+          suggestedUses: result.suggestedUses || prev.suggestedUses,
+          pairings: result.pairings || prev.pairings,
+          substitutes: result.substitutes || prev.substitutes,
+          shelfLife: result.shelfLife || prev.shelfLife,
+          storageInstructions: result.storageInstructions || prev.storageInstructions,
+        }));
+        setShowAutoGenerate(false);
+      } else {
+        setError("Impossible de générer la fiche. Vérifiez votre clé API Gemini.");
+      }
+    } catch (err: any) {
+      setError(err.message || "Erreur lors de la génération IA");
+    } finally {
+      setAutoGenerating(false);
+    }
   };
 
   const handleEnrichWithAI = async () => {
@@ -228,6 +276,59 @@ export const AddIngredient: React.FC = () => {
               )}
               Enrichir avec l'IA
             </button>
+          </div>
+        </div>
+
+        {/* Auto Generate Card */}
+        <div className="bg-gradient-to-br from-purple-500/10 to-kitchen-500/10 dark:from-purple-900/30 dark:to-kitchen-900/30 rounded-xl border border-purple-200 dark:border-purple-800 p-6">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-kitchen-500 flex items-center justify-center flex-shrink-0">
+              <Wand2 className="w-6 h-6 text-white" />
+            </div>
+            <div className="flex-1">
+              <h2 className="font-semibold text-stone-900 dark:text-white mb-1">
+                Génération automatique IA
+              </h2>
+              <p className="text-sm text-stone-600 dark:text-stone-400 mb-4">
+                Entrez le nom du produit (et optionnellement la marque), puis cliquez pour générer automatiquement une fiche détaillée avec recherche Google.
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  className="w-full px-4 py-3 rounded-xl border border-purple-300 dark:border-purple-700 bg-white dark:bg-stone-800 text-stone-900 dark:text-white focus:ring-2 focus:ring-purple-500"
+                  placeholder="Ex: Huile lèche doigt"
+                />
+                <input
+                  type="text"
+                  value={formData.brand}
+                  onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
+                  className="w-full px-4 py-3 rounded-xl border border-purple-300 dark:border-purple-700 bg-white dark:bg-stone-800 text-stone-900 dark:text-white focus:ring-2 focus:ring-purple-500"
+                  placeholder="Marque ou producteur (optionnel)"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={handleAutoGenerate}
+                disabled={autoGenerating || !formData.name}
+                className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-purple-500 to-kitchen-500 hover:from-purple-600 hover:to-kitchen-600 text-white font-semibold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              >
+                {autoGenerating ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Génération en cours...
+                  </>
+                ) : (
+                  <>
+                    <Search className="w-5 h-5" />
+                    Générer la fiche complète
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
 
