@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: kitchenflow-backend
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3111
+      - DATABASE_URL=postgresql://kitchenflow:${DB_PASSWORD}@postgresql-server:5432/kitchenflow
+      - JWT_SECRET=${JWT_SECRET}
+    networks:
+      - kitchenflow-network
+      - postgresql_postgres-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3111/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: kitchenflow-frontend
+    restart: unless-stopped
+    ports:
+      - "5011:80"
+    depends_on:
+      - backend
+    networks:
+      - kitchenflow-network
+      - proxy_net
+
+networks:
+  kitchenflow-network:
+    driver: bridge
+  postgresql_postgres-network:
+    external: true
+  proxy_net:
+    external: true

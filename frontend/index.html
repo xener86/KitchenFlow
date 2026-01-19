@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KitchenFlow - Gestion Intelligente de Cuisine</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Outfit', 'sans-serif'],
+              serif: ['Playfair Display', 'serif'],
+            },
+            colors: {
+              kitchen: {
+                50: '#fefbf6',
+                100: '#fdf4e7',
+                200: '#fbe5c8',
+                300: '#f7cfa0',
+                400: '#f2b16d',
+                500: '#eb8f3c',
+                600: '#dc7124',
+                700: '#b7561c',
+                800: '#934517',
+                900: '#783a16',
+                950: '#411c09',
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      body {
+        font-family: 'Outfit', sans-serif;
+      }
+      .font-serif {
+        font-family: 'Playfair Display', serif;
+      }
+    </style>
+  </head>
+  <body class="bg-stone-50 dark:bg-stone-950">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
