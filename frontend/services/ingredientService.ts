@@ -22,6 +22,14 @@ const getHeaders = () => {
 
 const handleResponse = async (response: Response) => {
   if (!response.ok) {
+    // Token expiré ou invalide → déconnecter et rediriger vers login
+    if (response.status === 401 || response.status === 403) {
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('refresh_token');
+      localStorage.removeItem('user');
+      window.location.href = '/login';
+      throw new Error('Session expirée, reconnexion nécessaire');
+    }
     const errorText = await response.text();
     throw new Error(`API Error: ${response.status} ${response.statusText} - ${errorText}`);
   }
