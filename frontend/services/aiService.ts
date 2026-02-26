@@ -81,7 +81,7 @@ class GeminiAdapter implements AIAdapter {
       }
 
       const response = await this.client.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-2.5-flash',
         contents: prompt as any,
         config
       });
@@ -576,7 +576,7 @@ Réponds de manière concise, pratique et inspirante en français.`;
       ];
 
       const response = await this.client.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-2.5-flash',
         contents: messages as any,
         config: { temperature: 0.7 }
       });
