@@ -127,6 +127,7 @@ export interface Recipe {
   prepTime: number;            // minutes
   cookTime: number;            // minutes
   servings: number;
+  servingsText?: string;       // texte original "6-8 personnes"
   difficulty: Difficulty;
 
   // Suggestions IA
@@ -145,11 +146,46 @@ export interface Recipe {
 export interface RecipeIngredient {
   ingredientId?: string;
   name: string;
-  amount: number;
-  unit: string;
+  amount?: number;
+  unit?: string;
   optional: boolean;
   inStock?: boolean;
   stockQuantity?: number;
+}
+
+// Ingrédient recette enrichi du status stock (retourné par GET /api/recipes/:id)
+export interface RecipeIngredientWithStock extends RecipeIngredient {
+  id: string;
+  sortOrder: number;
+  inventoryName?: string;
+  inventoryCategory?: IngredientCategory;
+}
+
+// Recette avec ingrédients résolus + status stock
+export interface RecipeWithIngredients extends Recipe {
+  ingredients: RecipeIngredientWithStock[];
+  matchedCount: number;
+  unmatchedCount: number;
+}
+
+// Résultat d'import (pas encore sauvegardé)
+export interface RecipeImportResult {
+  recipe: Partial<Recipe>;
+  ingredients: Array<{ name: string; amount?: number; unit?: string; optional?: boolean }>;
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW';
+  parseMethod: 'JSON_LD' | 'AI_SCRAPE' | 'AI_TEXT' | 'PAPRIKA';
+}
+
+// Coup de pep's - suggestions d'amélioration IA
+export interface RecipeEnhancement {
+  suggestions: Array<{
+    type: 'ADDITION' | 'SUBSTITUTION' | 'TECHNIQUE';
+    ingredientFromInventory: string;
+    description: string;
+    reason: string;
+    impact: 'SUBTLE' | 'NOTICEABLE' | 'TRANSFORMATIVE';
+  }>;
+  chefComment: string;
 }
 
 // === AI CONFIGURATION ===

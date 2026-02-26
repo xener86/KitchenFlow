@@ -5,6 +5,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import {
   ChefHat,
   Package,
+  BookOpen,
   MapPin,
   BarChart3,
   Settings,
@@ -15,9 +16,11 @@ import {
   Menu,
   X,
   Sparkles,
-  AlertTriangle
+  AlertTriangle,
+  ShoppingCart
 } from 'lucide-react';
 import { useIngredients } from '../hooks/useIngredients';
+import { getShoppingList } from '../services/recipeService';
 
 export const Layout: React.FC = () => {
   const location = useLocation();
@@ -25,9 +28,17 @@ export const Layout: React.FC = () => {
   const { theme, setTheme } = useTheme();
   const { ingredients } = useIngredients();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [shoppingCount, setShoppingCount] = useState(0);
 
   // Count expiring items
   const expiringCount = ingredients.filter(i => i.hasExpiringSoon).length;
+
+  // Count unchecked shopping list items
+  useEffect(() => {
+    getShoppingList().then(items => {
+      setShoppingCount(items.filter(i => !i.isChecked).length);
+    }).catch(() => {});
+  }, [location.pathname]);
 
   const cycleTheme = () => {
     const themes: Array<'light' | 'dark' | 'system'> = ['light', 'dark', 'system'];
@@ -44,6 +55,7 @@ export const Layout: React.FC = () => {
 
   const navItems = [
     { path: '/', icon: Package, label: 'Inventaire' },
+    { path: '/recipes', icon: BookOpen, label: 'Recettes' },
     { path: '/storage', icon: MapPin, label: 'Rangements' },
     { path: '/chef', icon: Sparkles, label: 'Chef IA' },
     { path: '/analytics', icon: BarChart3, label: 'Stats' },
@@ -93,6 +105,20 @@ export const Layout: React.FC = () => {
 
             {/* Right Actions */}
             <div className="flex items-center gap-2">
+              {/* Shopping List Badge */}
+              {shoppingCount > 0 && (
+                <NavLink
+                  to="/shopping-list"
+                  className="relative p-2 text-kitchen-600 dark:text-kitchen-400 hover:bg-kitchen-50 dark:hover:bg-kitchen-900/20 rounded-lg"
+                  title={`${shoppingCount} article(s) à acheter`}
+                >
+                  <ShoppingCart className="w-5 h-5" />
+                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-kitchen-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
+                    {shoppingCount}
+                  </span>
+                </NavLink>
+              )}
+
               {/* Expiring Alert */}
               {expiringCount > 0 && (
                 <NavLink

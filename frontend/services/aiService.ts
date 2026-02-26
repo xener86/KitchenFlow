@@ -28,6 +28,34 @@ interface AIAdapter {
   suggestRecipesFromIngredients(ingredients: string[]): Promise<ChefSuggestion[]>;
   improveRecipe(recipe: string, availableIngredients: string[]): Promise<RecipeImprovement | null>;
   chat(history: Array<{ role: string; content: string }>, message: string): Promise<string>;
+  parseRecipeFromText(text: string): Promise<ParsedRecipeResult>;
+  parseRecipeFromHtml(rawText: string, url: string): Promise<ParsedRecipeResult>;
+  matchIngredientsToInventory(
+    recipeIngredients: string[],
+    inventoryIngredients: Array<{ id: string; name: string; category: string }>
+  ): Promise<Array<{ recipeIngredientName: string; matchedIngredientId: string | null; confidence: string }>>;
+  suggestEnhancements(
+    recipe: { name: string; ingredients: string[]; instructions: string[] },
+    inventoryIngredients: Array<{ name: string; category: string }>
+  ): Promise<RecipeEnhancement>;
+}
+
+// Intermediate type for parsed recipe results
+interface ParsedRecipeResult {
+  name?: string;
+  category?: string;
+  cuisine?: string;
+  difficulty?: string;
+  prepTime?: number;
+  cookTime?: number;
+  servings?: number;
+  servingsText?: string;
+  instructions?: string[];
+  winePairings?: string[];
+  tips?: string[];
+  variations?: string[];
+  sourceUrl?: string;
+  ingredients?: Array<{ name: string; amount?: number; unit?: string; optional?: boolean }>;
 }
 
 // === GEMINI ADAPTER ===
@@ -352,6 +380,183 @@ Réponds en JSON en français.`;
     return await this.generateJSON(prompt, schema, false);
   }
 
+  private getRecipeSchema() {
+    return {
+      type: Type.OBJECT,
+      properties: {
+        name: { type: Type.STRING, description: "Nom de la recette" },
+        category: { type: Type.STRING, enum: ['ENTREE', 'PLAT', 'DESSERT', 'SAUCE', 'ACCOMPAGNEMENT', 'BOISSON', 'SNACK'] },
+        cuisine: { type: Type.STRING, description: "Type de cuisine (indienne, française, italienne...)" },
+        difficulty: { type: Type.STRING, enum: ['EASY', 'MEDIUM', 'HARD'] },
+        prepTime: { type: Type.NUMBER, description: "Temps de préparation en minutes" },
+        cookTime: { type: Type.NUMBER, description: "Temps de cuisson en minutes" },
+        servings: { type: Type.NUMBER, description: "Nombre de portions" },
+        servingsText: { type: Type.STRING, description: "Portions en texte original (ex: '6-8 personnes')" },
+        ingredients: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              name: { type: Type.STRING, description: "Nom de l'ingrédient" },
+              amount: { type: Type.NUMBER, description: "Quantité" },
+              unit: { type: Type.STRING, description: "Unité (g, kg, ml, cl, l, c.s., c.c., pièce, bouquet...)" },
+              optional: { type: Type.BOOLEAN, description: "Ingrédient optionnel" },
+            },
+            required: ['name']
+          }
+        },
+        instructions: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Étapes de préparation" },
+        winePairings: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Accords mets-vins" },
+        tips: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Astuces et conseils" },
+        variations: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Variantes possibles" },
+      },
+      required: ['name', 'ingredients', 'instructions']
+    };
+  }
+
+  async parseRecipeFromText(text: string): Promise<ParsedRecipeResult> {
+    const prompt = `Tu es un expert culinaire. Parse ce texte de recette et extrais toutes les informations structurées.
+
+Le texte peut venir d'un copier-coller de Paprika, d'un site web, ou d'une saisie libre.
+Extrais soigneusement :
+- Le nom de la recette
+- La catégorie (ENTREE, PLAT, DESSERT, SAUCE, ACCOMPAGNEMENT, BOISSON, SNACK)
+- La cuisine (indienne, française, etc.)
+- La difficulté (EASY, MEDIUM, HARD)
+- Les temps de préparation et cuisson en minutes
+- Le nombre de portions
+- Chaque ingrédient avec sa quantité et unité (gère ½, ¼, ¾, les c.s., c.c., etc.)
+- Les étapes de préparation (une par élément du tableau)
+- Les accords vins, astuces et variantes si présents
+
+TEXTE DE LA RECETTE :
+${text}
+
+Réponds en JSON en français.`;
+
+    const res = await this.generateJSON(prompt, this.getRecipeSchema());
+    if (!res) throw new Error('Impossible de parser la recette');
+    return res;
+  }
+
+  async parseRecipeFromHtml(rawText: string, url: string): Promise<ParsedRecipeResult> {
+    const truncated = rawText.length > 15000 ? rawText.substring(0, 15000) + '...' : rawText;
+    const prompt = `Tu es un expert culinaire. Ce texte a été extrait d'une page web de recette (${url}).
+Extrais la recette et structure toutes les informations.
+
+Ignore les publicités, menus de navigation, commentaires et contenu non lié à la recette.
+Concentre-toi uniquement sur la recette elle-même.
+
+TEXTE DE LA PAGE :
+${truncated}
+
+Réponds en JSON en français.`;
+
+    const res = await this.generateJSON(prompt, this.getRecipeSchema());
+    if (!res) throw new Error('Impossible de parser la recette depuis cette page');
+    return res;
+  }
+
+  async matchIngredientsToInventory(
+    recipeIngredients: string[],
+    inventoryIngredients: Array<{ id: string; name: string; category: string }>
+  ): Promise<Array<{ recipeIngredientName: string; matchedIngredientId: string | null; confidence: string }>> {
+    if (!inventoryIngredients.length || !recipeIngredients.length) return recipeIngredients.map(name => ({ recipeIngredientName: name, matchedIngredientId: null, confidence: 'LOW' }));
+
+    const inventoryList = inventoryIngredients.map(i => `${i.id}|${i.name} (${i.category})`).join('\n');
+
+    const prompt = `Tu es un expert culinaire. Pour chaque ingrédient de recette ci-dessous, trouve le meilleur match dans l'inventaire.
+
+INGRÉDIENTS DE LA RECETTE :
+${recipeIngredients.map((n, i) => `${i + 1}. ${n}`).join('\n')}
+
+INVENTAIRE DISPONIBLE (format: id|nom (catégorie)) :
+${inventoryList}
+
+RÈGLES DE MATCHING :
+- "curry en poudre" → "Curry" = match HIGH
+- "huile d'olive" → "Huile d'olive vierge extra" = match HIGH
+- "sel" → "Sel de Guérande" = match HIGH
+- "tomates" → pas dans l'inventaire = null
+- Sois intelligent sur les synonymes et variantes
+- En cas de doute, mets null plutôt qu'un mauvais match
+
+Réponds en JSON.`;
+
+    const schema = {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          recipeIngredientName: { type: Type.STRING },
+          matchedIngredientId: { type: Type.STRING, description: "UUID de l'ingrédient inventaire ou chaîne vide si pas de match" },
+          confidence: { type: Type.STRING, enum: ['HIGH', 'MEDIUM', 'LOW'] },
+        },
+        required: ['recipeIngredientName', 'confidence']
+      }
+    };
+
+    const res = await this.generateJSON(prompt, schema);
+    if (!res) return recipeIngredients.map(name => ({ recipeIngredientName: name, matchedIngredientId: null, confidence: 'LOW' }));
+
+    return res.map((r: any) => ({
+      ...r,
+      matchedIngredientId: r.matchedIngredientId || null,
+    }));
+  }
+
+  async suggestEnhancements(
+    recipe: { name: string; ingredients: string[]; instructions: string[] },
+    inventoryIngredients: Array<{ name: string; category: string }>
+  ): Promise<RecipeEnhancement> {
+    const inventoryList = inventoryIngredients.map(i => `- ${i.name} (${i.category})`).join('\n');
+
+    const prompt = `Tu es un chef gastronome créatif et passionné.
+
+RECETTE : ${recipe.name}
+INGRÉDIENTS : ${recipe.ingredients.join(', ')}
+INSTRUCTIONS : ${recipe.instructions.join(' | ')}
+
+INGRÉDIENTS SPÉCIAUX DANS L'ARMOIRE DU CUISINIER :
+${inventoryList}
+
+MISSION "COUP DE PEP'S" :
+Propose des améliorations créatives en utilisant les ingrédients spéciaux disponibles.
+- ADDITION : un ingrédient à ajouter pour sublimer le plat
+- SUBSTITUTION : remplacer un ingrédient basique par un meilleur
+- TECHNIQUE : une technique ou astuce pour améliorer le résultat
+
+Pour chaque suggestion, indique l'impact : SUBTLE (nuance), NOTICEABLE (notable), TRANSFORMATIVE (transforme le plat).
+
+Termine par un commentaire de chef enthousiaste et personnalisé.`;
+
+    const schema = {
+      type: Type.OBJECT,
+      properties: {
+        suggestions: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              type: { type: Type.STRING, enum: ['ADDITION', 'SUBSTITUTION', 'TECHNIQUE'] },
+              ingredientFromInventory: { type: Type.STRING, description: "Nom de l'ingrédient de l'inventaire utilisé" },
+              description: { type: Type.STRING, description: "Description de la suggestion" },
+              reason: { type: Type.STRING, description: "Pourquoi cette amélioration fonctionne" },
+              impact: { type: Type.STRING, enum: ['SUBTLE', 'NOTICEABLE', 'TRANSFORMATIVE'] },
+            },
+            required: ['type', 'ingredientFromInventory', 'description', 'reason', 'impact']
+          }
+        },
+        chefComment: { type: Type.STRING, description: "Commentaire enthousiaste du chef" },
+      },
+      required: ['suggestions', 'chefComment']
+    };
+
+    const res = await this.generateJSON(prompt, schema);
+    if (!res) throw new Error('Impossible de générer les suggestions');
+    return res;
+  }
+
   async chat(history: Array<{ role: string; content: string }>, message: string): Promise<string> {
     try {
       const systemPrompt = `Tu es un assistant culinaire expert, passionné et chaleureux.
@@ -486,6 +691,69 @@ Chaque suggestion: { type, title, description, ingredients (array), instructions
     ]);
   }
 
+  async parseRecipeFromText(text: string): Promise<ParsedRecipeResult> {
+    const system = `Tu es un expert culinaire. Parse du texte de recette en JSON structuré.
+Réponds en JSON avec: name, category (ENTREE/PLAT/DESSERT/SAUCE/ACCOMPAGNEMENT/BOISSON/SNACK), cuisine, difficulty (EASY/MEDIUM/HARD), prepTime (minutes), cookTime (minutes), servings, servingsText, ingredients (array de {name, amount, unit, optional}), instructions (array de string), winePairings, tips, variations.
+Gère les fractions (½, ¼), les unités françaises (c.s., c.c., pincée, gousse).`;
+
+    const res = await this.call([
+      { role: "system", content: system },
+      { role: "user", content: `Parse cette recette:\n\n${text}` }
+    ]);
+    if (!res) throw new Error('Impossible de parser la recette');
+    return res;
+  }
+
+  async parseRecipeFromHtml(rawText: string, url: string): Promise<ParsedRecipeResult> {
+    const truncated = rawText.length > 15000 ? rawText.substring(0, 15000) + '...' : rawText;
+    const system = `Tu es un expert culinaire. Extrais la recette d'un texte de page web.
+Ignore les pubs, menus, commentaires. Réponds en JSON avec: name, category, cuisine, difficulty, prepTime, cookTime, servings, ingredients [{name, amount, unit, optional}], instructions [string], winePairings, tips, variations.`;
+
+    const res = await this.call([
+      { role: "system", content: system },
+      { role: "user", content: `Extrais la recette de cette page (${url}):\n\n${truncated}` }
+    ]);
+    if (!res) throw new Error('Impossible de parser la recette depuis cette page');
+    return res;
+  }
+
+  async matchIngredientsToInventory(
+    recipeIngredients: string[],
+    inventoryIngredients: Array<{ id: string; name: string; category: string }>
+  ): Promise<Array<{ recipeIngredientName: string; matchedIngredientId: string | null; confidence: string }>> {
+    if (!inventoryIngredients.length || !recipeIngredients.length) return recipeIngredients.map(name => ({ recipeIngredientName: name, matchedIngredientId: null, confidence: 'LOW' }));
+
+    const system = `Tu es un expert culinaire. Match chaque ingrédient de recette à l'inventaire.
+Réponds en JSON: array de {recipeIngredientName, matchedIngredientId (UUID ou null), confidence (HIGH/MEDIUM/LOW)}.
+Sois intelligent: "curry en poudre" = "Curry", "huile d'olive" = "Huile d'olive vierge extra". En cas de doute, mets null.`;
+
+    const inventoryList = inventoryIngredients.map(i => `${i.id}|${i.name} (${i.category})`).join('\n');
+
+    const res = await this.call([
+      { role: "system", content: system },
+      { role: "user", content: `INGRÉDIENTS RECETTE:\n${recipeIngredients.join('\n')}\n\nINVENTAIRE (id|nom):\n${inventoryList}` }
+    ]);
+    if (!res) return recipeIngredients.map(name => ({ recipeIngredientName: name, matchedIngredientId: null, confidence: 'LOW' }));
+    return res.map((r: any) => ({ ...r, matchedIngredientId: r.matchedIngredientId || null }));
+  }
+
+  async suggestEnhancements(
+    recipe: { name: string; ingredients: string[]; instructions: string[] },
+    inventoryIngredients: Array<{ name: string; category: string }>
+  ): Promise<RecipeEnhancement> {
+    const system = `Tu es un chef gastronome créatif. Mission "Coup de pep's".
+Réponds en JSON: { suggestions: [{type: ADDITION/SUBSTITUTION/TECHNIQUE, ingredientFromInventory, description, reason, impact: SUBTLE/NOTICEABLE/TRANSFORMATIVE}], chefComment: string }`;
+
+    const inventoryList = inventoryIngredients.map(i => `${i.name} (${i.category})`).join(', ');
+
+    const res = await this.call([
+      { role: "system", content: system },
+      { role: "user", content: `Recette: ${recipe.name}\nIngrédients: ${recipe.ingredients.join(', ')}\nIngrédients spéciaux dispo: ${inventoryList}\n\nSuggère des améliorations créatives.` }
+    ]);
+    if (!res) throw new Error('Impossible de générer les suggestions');
+    return res;
+  }
+
   async chat(history: Array<{ role: string; content: string }>, message: string): Promise<string> {
     const messages = [
       { role: "system", content: "Tu es un assistant culinaire expert et passionné. Réponds en français de manière concise, pratique et inspirante." },
@@ -529,3 +797,23 @@ export const improveRecipe = (recipe: string, availableIngredients: string[]) =>
 
 export const chatWithChef = (history: Array<{ role: string; content: string }>, message: string) =>
   getAiProvider().chat(history, message);
+
+// === RECIPE AI FUNCTIONS (Phase 2) ===
+
+import type { Recipe, RecipeEnhancement } from '../types';
+
+export const parseRecipeFromText = async (text: string): Promise<ParsedRecipeResult> =>
+  getAiProvider().parseRecipeFromText(text);
+
+export const parseRecipeFromHtml = async (rawText: string, url: string): Promise<ParsedRecipeResult> =>
+  getAiProvider().parseRecipeFromHtml(rawText, url);
+
+export const matchIngredientsToInventory = async (
+  recipeIngredients: string[],
+  inventoryIngredients: Array<{ id: string; name: string; category: string }>
+) => getAiProvider().matchIngredientsToInventory(recipeIngredients, inventoryIngredients);
+
+export const suggestEnhancements = async (
+  recipe: { name: string; ingredients: string[]; instructions: string[] },
+  inventoryIngredients: Array<{ name: string; category: string }>
+): Promise<RecipeEnhancement> => getAiProvider().suggestEnhancements(recipe, inventoryIngredients);

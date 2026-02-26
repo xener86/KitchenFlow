@@ -164,6 +164,109 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ['userId'],
         },
       },
+
+      // ===== RECIPE TOOLS =====
+      {
+        name: 'add_recipe',
+        description: 'Ajoute une recette à KitchenFlow. Lie automatiquement les ingrédients à l\'inventaire quand possible (matching ILIKE).',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            userId: { type: 'string', description: 'ID de l\'utilisateur' },
+            name: { type: 'string', description: 'Nom de la recette' },
+            category: { type: 'string', description: 'Catégorie (ENTREE, PLAT, DESSERT, SAUCE, ACCOMPAGNEMENT, BOISSON, SNACK)' },
+            cuisine: { type: 'string', description: 'Type de cuisine (française, indienne, etc.)' },
+            difficulty: { type: 'string', description: 'Difficulté (EASY, MEDIUM, HARD)' },
+            prepTime: { type: 'number', description: 'Temps de préparation en minutes' },
+            cookTime: { type: 'number', description: 'Temps de cuisson en minutes' },
+            servings: { type: 'number', description: 'Nombre de portions' },
+            servingsText: { type: 'string', description: 'Portions en texte (ex: "6-8 personnes")' },
+            ingredients: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  amount: { type: 'number' },
+                  unit: { type: 'string' },
+                  optional: { type: 'boolean' },
+                },
+                required: ['name'],
+              },
+              description: 'Liste des ingrédients',
+            },
+            instructions: { type: 'array', items: { type: 'string' }, description: 'Étapes de préparation' },
+            winePairings: { type: 'array', items: { type: 'string' }, description: 'Accords mets-vins' },
+            tips: { type: 'array', items: { type: 'string' }, description: 'Astuces' },
+            variations: { type: 'array', items: { type: 'string' }, description: 'Variantes' },
+            source: { type: 'string', description: 'Source (MANUAL, AI, IMPORTED)' },
+            sourceUrl: { type: 'string', description: 'URL source' },
+            isFavorite: { type: 'boolean', description: 'Marquer comme favori' },
+          },
+          required: ['userId', 'name', 'ingredients', 'instructions'],
+        },
+      },
+      {
+        name: 'list_recipes',
+        description: 'Liste les recettes de l\'utilisateur. Peut filtrer par catégorie, recherche ou favoris.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            userId: { type: 'string', description: 'ID de l\'utilisateur' },
+            category: { type: 'string', description: 'Filtrer par catégorie' },
+            search: { type: 'string', description: 'Recherche par nom ou cuisine' },
+            favorite: { type: 'boolean', description: 'Uniquement les favoris' },
+          },
+          required: ['userId'],
+        },
+      },
+      {
+        name: 'get_recipe',
+        description: 'Récupère le détail d\'une recette avec le statut stock de chaque ingrédient',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            recipeId: { type: 'string', description: 'ID de la recette' },
+          },
+          required: ['recipeId'],
+        },
+      },
+      {
+        name: 'get_shopping_list',
+        description: 'Récupère la liste de courses de l\'utilisateur',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            userId: { type: 'string', description: 'ID de l\'utilisateur' },
+          },
+          required: ['userId'],
+        },
+      },
+      {
+        name: 'add_to_shopping_list',
+        description: 'Ajoute des articles à la liste de courses',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            userId: { type: 'string', description: 'ID de l\'utilisateur' },
+            items: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  quantity: { type: 'number' },
+                  unit: { type: 'string' },
+                  linkedRecipeId: { type: 'string' },
+                },
+                required: ['name'],
+              },
+              description: 'Articles à ajouter',
+            },
+          },
+          required: ['userId', 'items'],
+        },
+      },
     ],
   };
 });
@@ -390,6 +493,227 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         return {
           content: [{ type: 'text', text: JSON.stringify(storageMap, null, 2) }],
+        };
+      }
+
+      // ===== RECIPE TOOLS =====
+
+      case 'add_recipe': {
+        const client = await pool.connect();
+        try {
+          await client.query('BEGIN');
+
+          // Create recipe
+          const recipeResult = await client.query(
+            `INSERT INTO recipes (user_id, name, category, cuisine, instructions, prep_time, cook_time, servings, servings_text, difficulty, wine_pairings, tips, variations, source, source_url, is_favorite, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW())
+             RETURNING *`,
+            [
+              args.userId, args.name, args.category || 'PLAT', args.cuisine || null,
+              JSON.stringify(args.instructions || []), args.prepTime || 0, args.cookTime || 0,
+              args.servings || 4, args.servingsText || null, args.difficulty || 'MEDIUM',
+              JSON.stringify(args.winePairings || []), JSON.stringify(args.tips || []),
+              JSON.stringify(args.variations || []), args.source || 'AI',
+              args.sourceUrl || null, args.isFavorite || false,
+            ]
+          );
+          const recipe = recipeResult.rows[0];
+
+          // Auto-match ingredients to inventory
+          let linked = 0;
+          let unlinked = 0;
+          const ingredientDetails = [];
+
+          for (let i = 0; i < (args.ingredients || []).length; i++) {
+            const ing = args.ingredients[i];
+
+            // Try to match by ILIKE against user's inventory
+            const matchResult = await client.query(
+              `SELECT id, name FROM ingredients WHERE user_id = $1 AND name ILIKE $2 LIMIT 1`,
+              [args.userId, `%${ing.name}%`]
+            );
+
+            const matchedId = matchResult.rows.length > 0 ? matchResult.rows[0].id : null;
+
+            await client.query(
+              `INSERT INTO recipe_ingredients (recipe_id, ingredient_id, name, amount, unit, is_optional, sort_order)
+               VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+              [recipe.id, matchedId, ing.name, ing.amount || null, ing.unit || null, ing.optional || false, i]
+            );
+
+            if (matchedId) {
+              linked++;
+              ingredientDetails.push(`✅ ${ing.name} → ${matchResult.rows[0].name}`);
+            } else {
+              unlinked++;
+              ingredientDetails.push(`⬜ ${ing.name}`);
+            }
+          }
+
+          await client.query('COMMIT');
+
+          return {
+            content: [{
+              type: 'text',
+              text: `🍳 Recette "${args.name}" ajoutée !\n\n` +
+                `📊 ${args.ingredients?.length || 0} ingrédients : ${linked} liés à l'inventaire, ${unlinked} non liés.\n\n` +
+                `Détail :\n${ingredientDetails.join('\n')}\n\n` +
+                `ID: ${recipe.id}`
+            }],
+          };
+        } catch (err) {
+          await client.query('ROLLBACK');
+          throw err;
+        } finally {
+          client.release();
+        }
+      }
+
+      case 'list_recipes': {
+        let query = 'SELECT * FROM recipes WHERE user_id = $1';
+        const params = [args.userId];
+        let paramIdx = 2;
+
+        if (args.category) {
+          query += ` AND category = $${paramIdx}`;
+          params.push(args.category);
+          paramIdx++;
+        }
+        if (args.search) {
+          query += ` AND (name ILIKE $${paramIdx} OR cuisine ILIKE $${paramIdx})`;
+          params.push(`%${args.search}%`);
+          paramIdx++;
+        }
+        if (args.favorite) {
+          query += ' AND is_favorite = true';
+        }
+
+        query += ' ORDER BY updated_at DESC';
+
+        const result = await pool.query(query, params);
+        const recipes = result.rows.map(r => ({
+          id: r.id,
+          name: r.name,
+          category: r.category,
+          cuisine: r.cuisine,
+          difficulty: r.difficulty,
+          prepTime: r.prep_time,
+          cookTime: r.cook_time,
+          servings: r.servings,
+          source: r.source,
+          isFavorite: r.is_favorite,
+          updatedAt: r.updated_at,
+        }));
+
+        return {
+          content: [{
+            type: 'text',
+            text: recipes.length > 0
+              ? `📖 ${recipes.length} recette(s) trouvée(s) :\n\n${JSON.stringify(recipes, null, 2)}`
+              : 'Aucune recette trouvée.',
+          }],
+        };
+      }
+
+      case 'get_recipe': {
+        const recipeResult = await pool.query('SELECT * FROM recipes WHERE id = $1', [args.recipeId]);
+        if (recipeResult.rows.length === 0) {
+          return { content: [{ type: 'text', text: 'Recette non trouvée.' }] };
+        }
+        const r = recipeResult.rows[0];
+
+        // Get ingredients with stock status
+        const ingredientsResult = await pool.query(
+          `SELECT ri.*, i.name as inv_name, i.category as inv_category,
+            (SELECT COUNT(*) FROM stock_items s WHERE s.ingredient_id = ri.ingredient_id AND s.is_finished = false) as stock_count
+           FROM recipe_ingredients ri
+           LEFT JOIN ingredients i ON i.id = ri.ingredient_id
+           WHERE ri.recipe_id = $1
+           ORDER BY ri.sort_order`,
+          [args.recipeId]
+        );
+
+        const recipeDetail = {
+          id: r.id,
+          name: r.name,
+          category: r.category,
+          cuisine: r.cuisine,
+          difficulty: r.difficulty,
+          prepTime: r.prep_time,
+          cookTime: r.cook_time,
+          servings: r.servings,
+          servingsText: r.servings_text,
+          instructions: r.instructions,
+          winePairings: r.wine_pairings,
+          tips: r.tips,
+          variations: r.variations,
+          source: r.source,
+          sourceUrl: r.source_url,
+          isFavorite: r.is_favorite,
+          ingredients: ingredientsResult.rows.map(ing => ({
+            name: ing.name,
+            amount: ing.amount ? parseFloat(ing.amount) : null,
+            unit: ing.unit,
+            optional: ing.is_optional,
+            linkedToInventory: !!ing.ingredient_id,
+            inventoryName: ing.inv_name || null,
+            inStock: parseInt(ing.stock_count) > 0,
+            stockCount: parseInt(ing.stock_count),
+          })),
+        };
+
+        return {
+          content: [{ type: 'text', text: JSON.stringify(recipeDetail, null, 2) }],
+        };
+      }
+
+      case 'get_shopping_list': {
+        const result = await pool.query(
+          `SELECT sl.*, r.name as recipe_name
+           FROM shopping_list_items sl
+           LEFT JOIN recipes r ON r.id = sl.linked_recipe_id
+           WHERE sl.user_id = $1
+           ORDER BY sl.is_checked, sl.created_at DESC`,
+          [args.userId]
+        );
+
+        const items = result.rows.map(row => ({
+          id: row.id,
+          name: row.name,
+          quantity: row.quantity ? parseFloat(row.quantity) : null,
+          unit: row.unit,
+          isChecked: row.is_checked,
+          recipe: row.recipe_name || null,
+        }));
+
+        const unchecked = items.filter(i => !i.isChecked).length;
+
+        return {
+          content: [{
+            type: 'text',
+            text: items.length > 0
+              ? `🛒 Liste de courses (${unchecked} à acheter, ${items.length - unchecked} acheté(s)) :\n\n${JSON.stringify(items, null, 2)}`
+              : 'La liste de courses est vide.',
+          }],
+        };
+      }
+
+      case 'add_to_shopping_list': {
+        const added = [];
+        for (const item of args.items) {
+          const result = await pool.query(
+            `INSERT INTO shopping_list_items (user_id, name, quantity, unit, linked_recipe_id, created_at)
+             VALUES ($1, $2, $3, $4, $5, NOW()) RETURNING *`,
+            [args.userId, item.name, item.quantity || 1, item.unit || null, item.linkedRecipeId || null]
+          );
+          added.push(result.rows[0].name);
+        }
+
+        return {
+          content: [{
+            type: 'text',
+            text: `🛒 ${added.length} article(s) ajouté(s) à la liste de courses :\n${added.map(n => `- ${n}`).join('\n')}`
+          }],
         };
       }
 
