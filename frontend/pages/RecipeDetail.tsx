@@ -36,7 +36,7 @@ const RECIPE_CATEGORY_COLORS: Record<string, string> = {
 };
 
 const RECIPE_CATEGORY_LABELS: Record<RecipeCategory, string> = {
-  ENTREE: 'Entr\u00e9e',
+  ENTREE: 'Entrée',
   PLAT: 'Plat',
   DESSERT: 'Dessert',
   SAUCE: 'Sauce',
@@ -60,7 +60,7 @@ const DIFFICULTY_COLORS: Record<Difficulty, string> = {
 const SOURCE_LABELS: Record<string, string> = {
   MANUAL: 'Manuelle',
   AI: 'IA',
-  IMPORTED: 'Import\u00e9e',
+  IMPORTED: 'Importée',
 };
 
 // === HELPERS ===
@@ -107,7 +107,7 @@ export const RecipeDetail: React.FC = () => {
     try {
       const data = await getRecipeById(id);
       if (!data) {
-        setError('Recette non trouv\u00e9e');
+        setError('Recette non trouvée');
         return;
       }
       setRecipe(data);
@@ -155,7 +155,7 @@ export const RecipeDetail: React.FC = () => {
         .map(ing => ing.name);
 
       if (unmatchedIngredients.length === 0) {
-        setMatchMessage('Tous les ingr\u00e9dients sont d\u00e9j\u00e0 li\u00e9s !');
+        setMatchMessage('Tous les ingrédients sont déjà liés !');
         setMatching(false);
         return;
       }
@@ -185,8 +185,8 @@ export const RecipeDetail: React.FC = () => {
 
       setMatchMessage(
         linked > 0
-          ? `${linked} ingr\u00e9dient${linked > 1 ? 's' : ''} li\u00e9${linked > 1 ? 's' : ''} \u00e0 l'inventaire !`
-          : 'Aucun nouveau match trouv\u00e9.'
+          ? `${linked} ingrédient${linked > 1 ? 's' : ''} lié${linked > 1 ? 's' : ''} à l'inventaire !`
+          : 'Aucun nouveau match trouvé.'
       );
       if (linked > 0) await loadRecipe();
     } catch (err: any) {
@@ -212,7 +212,7 @@ export const RecipeDetail: React.FC = () => {
       );
       setEnhancements(result);
     } catch (err: any) {
-      setEnhancementError(err.message || 'Erreur lors de la g\u00e9n\u00e9ration des suggestions');
+      setEnhancementError(err.message || 'Erreur lors de la génération des suggestions');
     } finally {
       setLoadingEnhancements(false);
     }
@@ -233,7 +233,7 @@ export const RecipeDetail: React.FC = () => {
       <div className="text-center py-12">
         <AlertTriangle className="w-16 h-16 mx-auto text-red-500 mb-4" />
         <h2 className="text-xl font-semibold text-stone-900 dark:text-white mb-2">
-          {error || 'Recette non trouv\u00e9e'}
+          {error || 'Recette non trouvée'}
         </h2>
         <NavLink to="/recipes" className="text-kitchen-600 hover:underline">
           Retour aux recettes
@@ -291,7 +291,7 @@ export const RecipeDetail: React.FC = () => {
             to={`/recipe/${recipe.id}/cook`}
             className="p-2 text-stone-300 dark:text-stone-600 cursor-not-allowed rounded-lg"
             onClick={(e) => e.preventDefault()}
-            title="Cuisiner (bient\u00f4t disponible)"
+            title="Cuisiner (bientôt disponible)"
           >
             <Flame className="w-5 h-5" />
           </NavLink>
@@ -342,7 +342,7 @@ export const RecipeDetail: React.FC = () => {
                     <span className="font-medium text-stone-900 dark:text-white">
                       {formatTime(recipe.prepTime)}
                     </span>
-                    {' pr\u00e9p'}
+                    {' prép'}
                   </>
                 )}
                 {recipe.prepTime > 0 && recipe.cookTime > 0 && ' + '}
@@ -375,7 +375,7 @@ export const RecipeDetail: React.FC = () => {
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold text-lg text-stone-900 dark:text-white flex items-center gap-2">
             <ChefHat className="w-5 h-5 text-kitchen-500" />
-            Ingr\u00e9dients
+            Ingrédients
             <span className="ml-1 px-2 py-0.5 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 text-xs font-medium">
               {totalIngredients}
             </span>
@@ -388,7 +388,7 @@ export const RecipeDetail: React.FC = () => {
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-kitchen-50 dark:bg-kitchen-900/20 text-kitchen-600 dark:text-kitchen-400 text-sm font-medium hover:bg-kitchen-100 dark:hover:bg-kitchen-900/30 disabled:opacity-50 transition-colors"
             >
               {matching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
-              Lier \u00e0 l'inventaire
+              Lier à l'inventaire
             </button>
           )}
         </div>
@@ -408,7 +408,7 @@ export const RecipeDetail: React.FC = () => {
         {/* Stock summary */}
         <div className="mt-4 pt-4 border-t border-stone-100 dark:border-stone-800 text-sm text-stone-500 dark:text-stone-400">
           <span className="font-medium text-stone-700 dark:text-stone-300">{inStockCount}</span>
-          {' '}ingr\u00e9dient{inStockCount > 1 ? 's' : ''} en stock sur{' '}
+          {' '}ingrédient{inStockCount > 1 ? 's' : ''} en stock sur{' '}
           <span className="font-medium text-stone-700 dark:text-stone-300">{totalIngredients}</span>
         </div>
       </div>
@@ -424,7 +424,7 @@ export const RecipeDetail: React.FC = () => {
               Coup de pep's
             </h2>
             <p className="text-sm text-stone-500 dark:text-stone-400">
-              Sublimez cette recette avec vos ingr\u00e9dients sp\u00e9ciaux
+              Sublimez cette recette avec vos ingrédients spéciaux
             </p>
           </div>
         </div>
@@ -448,8 +448,8 @@ export const RecipeDetail: React.FC = () => {
               <div key={i} className="flex gap-3 p-3 rounded-xl bg-white/60 dark:bg-stone-800/60">
                 <div className="flex-shrink-0 mt-0.5">
                   {s.type === 'ADDITION' && <span className="text-lg">+</span>}
-                  {s.type === 'SUBSTITUTION' && <span className="text-lg">\u21c4</span>}
-                  {s.type === 'TECHNIQUE' && <span className="text-lg">\ud83d\udd25</span>}
+                  {s.type === 'SUBSTITUTION' && <span className="text-lg">⇄</span>}
+                  {s.type === 'TECHNIQUE' && <span className="text-lg">🔥</span>}
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 mb-1">
@@ -475,7 +475,7 @@ export const RecipeDetail: React.FC = () => {
             {enhancements.chefComment && (
               <div className="mt-3 pt-3 border-t border-kitchen-200/50 dark:border-kitchen-800/30">
                 <p className="text-sm text-kitchen-700 dark:text-kitchen-300 italic">
-                  \ud83d\udc68\u200d\ud83c\udf73 {enhancements.chefComment}
+                  👨‍🍳 {enhancements.chefComment}
                 </p>
               </div>
             )}
@@ -484,7 +484,7 @@ export const RecipeDetail: React.FC = () => {
 
         {inventoryIngredients.length === 0 && !enhancements && (
           <p className="text-xs text-stone-400 dark:text-stone-500 mt-2">
-            Ajoutez des ingr\u00e9dients \u00e0 votre inventaire pour activer cette fonctionnalit\u00e9.
+            Ajoutez des ingrédients à votre inventaire pour activer cette fonctionnalité.
           </p>
         )}
       </div>
@@ -612,7 +612,7 @@ export const RecipeDetail: React.FC = () => {
               Supprimer cette recette ?
             </h3>
             <p className="text-stone-600 dark:text-stone-400 mb-6">
-              Cette action supprimera d\u00e9finitivement &laquo;&nbsp;{recipe.name}&nbsp;&raquo; et toutes ses donn\u00e9es associ\u00e9es.
+              Cette action supprimera définitivement &laquo;&nbsp;{recipe.name}&nbsp;&raquo; et toutes ses données associées.
             </p>
             <div className="flex gap-3">
               <button
@@ -690,12 +690,12 @@ const IngredientRow: React.FC<IngredientRowProps> = ({ ingredient: ing }) => {
         ) : ing.ingredientId ? (
           <span className="flex items-center gap-1.5 text-orange-500 dark:text-orange-400 text-sm">
             <AlertTriangle className="w-4 h-4" />
-            <span className="hidden sm:inline">\u00c9puis\u00e9</span>
+            <span className="hidden sm:inline">Épuisé</span>
           </span>
         ) : (
           <span className="flex items-center gap-1.5 text-stone-400 dark:text-stone-500 text-sm">
             <Link2 className="w-4 h-4" />
-            <span className="hidden sm:inline">Non li\u00e9</span>
+            <span className="hidden sm:inline">Non lié</span>
           </span>
         )}
       </div>
